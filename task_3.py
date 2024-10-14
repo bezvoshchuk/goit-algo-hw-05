@@ -1,145 +1,245 @@
+import os
 import timeit
+from typing import Callable
 
-# Функції пошуку підрядка
 
-def naive_search(text, pattern):
-    for i in range(len(text) - len(pattern) + 1):
-        if text[i:i+len(pattern)] == pattern:
-            return True
-    return False
+def read_file(filename):
+    project_dir = os.path.dirname(os.path.abspath(__file__))
+    full_path = os.path.join(project_dir, filename)
+    with open(full_path, "r", encoding="utf-8", errors="ignore") as file:
+        return file.read()
 
-def kmp_search(text, pattern):
-    def compute_prefix(pattern):
-        prefix = [0] * len(pattern)
-        j = 0
-        for i in range(1, len(pattern)):
-            while j > 0 and pattern[j] != pattern[i]:
-                j = prefix[j-1]
-            if pattern[j] == pattern[i]:
-                j += 1
-            prefix[i] = j
-        return prefix
 
-    prefix = compute_prefix(pattern)
-    j = 0
-    for i in range(len(text)):
-        while j > 0 and text[i] != pattern[j]:
-            j = prefix[j-1]
-        if text[i] == pattern[j]:
+def measure_time(algorithm: Callable, text: str, pattern: str):
+    setup = f"from __main__ import {algorithm}, read_file; text = read_file('{text}'); pattern = '{pattern}'"
+    stmt = f"{algorithm}(text, pattern)"
+
+    time_taken = timeit.timeit(stmt, setup, number=1)
+    return time_taken
+
+
+# Knuth-Morris-Pratt search
+def knuth_morris_pratt_search(main_string, pattern):
+    M = len(pattern)
+    N = len(main_string)
+
+    lps = compute_lps(pattern)
+
+    i = j = 0
+
+    while i < N:
+        if pattern[j] == main_string[i]:
+            i += 1
             j += 1
-        if j == len(pattern):
-            return True
-    return False
-
-def bm_search(text, pattern):
-    last_occurrence = {}
-    for i, char in enumerate(pattern):
-        last_occurrence[char] = i
-
-    n = len(text)
-    m = len(pattern)
-    i = m - 1
-    if i > n - 1:
-        return False
-
-    j = m - 1
-    while i < n:
-        if text[i] == pattern[j]:
-            if j == 0:
-                return True
-            else:
-                i -= 1
-                j -= 1
+        elif j != 0:
+            j = lps[j - 1]
         else:
-            if text[i] not in last_occurrence:
-                i += m
+            i += 1
+
+        if j == M:
+            return i - j
+
+    return -1
+
+
+def compute_lps(pattern):
+    lps = [0] * len(pattern)
+    length = 0
+    i = 1
+
+    while i < len(pattern):
+        if pattern[i] == pattern[length]:
+            length += 1
+            lps[i] = length
+            i += 1
+        else:
+            if length != 0:
+                length = lps[length - 1]
             else:
-                shift = j - last_occurrence[text[i]]
-                i += max(1, shift)
-            j = m - 1
-    return False
+                lps[i] = 0
+                i += 1
 
-def rk_search(text, pattern):
-    def hash_function(string, modulus):
-        hash_value = 0
-        for char in string:
-            hash_value = (hash_value * 256 + ord(char)) % modulus
-        return hash_value
+    return lps
 
-    n = len(text)
-    m = len(pattern)
-    if m > n:
-        return False
 
-    pattern_hash = hash_function(pattern, 101)
-    text_hash = hash_function(text[:m], 101)
-    if pattern_hash == text_hash and text[:m] == pattern:
-        return True
+# Boyer-Moore search
+def build_shift_table(pattern):
+    table = {}
+    length = len(pattern)
+    for index, char in enumerate(pattern[:-1]):
+        table[char] = length - index - 1
+    table.setdefault(pattern[-1], length)
+    return table
 
-    high_order = (256 ** (m - 1)) % 101
-    for i in range(1, n - m + 1):
-        text_hash = (256 * (text_hash - ord(text[i - 1]) * high_order) + ord(text[i + m - 1])) % 101
-        if pattern_hash == text_hash and text[i:i+m] == pattern:
-            return True
-    return False
 
-# Зчитування текстових файлів і підрядків
+def boyer_moore_search(text, pattern):
+    shift_table = build_shift_table(pattern)
+    i = 0
 
-with open('article_1.txt', encoding="ISO-8859-1") as file:
-    text1 = file.read()
+    while i <= len(text) - len(pattern):
+        j = len(pattern) - 1
 
-with open('article_2.txt', encoding="ISO-8859-1") as file:
-    text2 = file.read()
+        while j >= 0 and text[i + j] == pattern[j]:
+            j -= 1
 
-pattern1_exist = "ваш_підрядок_1_існуючий"
-pattern1_non_exist = "ваш_підрядок_1_невигаданий"
-pattern2_exist = "ваш_підрядок_2_існуючий"
-pattern2_non_exist = "ваш_підрядок_2_невигаданий"
+        if j < 0:
+            return i
 
-# Вимірювання часу виконання кожного алгоритму для кожного підрядка
+        i += shift_table.get(text[i + len(pattern) - 1], len(pattern))
 
-naive_time1_exist = timeit.timeit(lambda: naive_search(text1, pattern1_exist), number=100)
-kmp_time1_exist = timeit.timeit(lambda: kmp_search(text1, pattern1_exist), number=100)
-bm_time1_exist = timeit.timeit(lambda: bm_search(text1, pattern1_exist), number=100)
-rk_time1_exist = timeit.timeit(lambda: rk_search(text1, pattern1_exist), number=100)
+    return -1
 
-naive_time1_non_exist = timeit.timeit(lambda: naive_search(text1, pattern1_non_exist), number=100)
-kmp_time1_non_exist = timeit.timeit(lambda: kmp_search(text1, pattern1_non_exist), number=100)
-bm_time1_non_exist = timeit.timeit(lambda: bm_search(text1, pattern1_non_exist), number=100)
-rk_time1_non_exist = timeit.timeit(lambda: rk_search(text1, pattern1_non_exist), number=100)
 
-naive_time2_exist = timeit.timeit(lambda: naive_search(text2, pattern2_exist), number=100)
-kmp_time2_exist = timeit.timeit(lambda: kmp_search(text2, pattern2_exist), number=100)
-bm_time2_exist = timeit.timeit(lambda: bm_search(text2, pattern2_exist), number=100)
-rk_time2_exist = timeit.timeit(lambda: rk_search(text2, pattern2_exist), number=100)
+# Rabin-Karp search
+def polynomial_hash(s, base=256, modulus=101):
+    n = len(s)
+    hash_value = 0
+    for i, char in enumerate(s):
+        power_of_base = pow(base, n - i - 1) % modulus
+        hash_value = (hash_value + ord(char) * power_of_base) % modulus
+    return hash_value
 
-naive_time2_non_exist = timeit.timeit(lambda: naive_search(text2, pattern2_non_exist), number=100)
-kmp_time2_non_exist = timeit.timeit(lambda: kmp_search(text2, pattern2_non_exist), number=100)
-bm_time2_non_exist = timeit.timeit(lambda: bm_search(text2, pattern2_non_exist), number=100)
-rk_time2_non_exist = timeit.timeit(lambda: rk_search(text2, pattern2_non_exist), number=100)
 
-# Виведення результатів
+def rabin_karp_search(main_string, substring):
+    substring_length = len(substring)
+    main_string_length = len(main_string)
 
-print("Час виконання для тексту 1 з наявним підрядком:")
-print("Наївний алгоритм:", naive_time1_exist)
-print("КМП:", kmp_time1_exist)
-print("Боєр-Мур:", bm_time1_exist)
-print("Рабін-Карп:", rk_time1_exist)
+    base = 256
+    modulus = 101
 
-print("Час виконання для тексту 1 з невигаданим підрядком:")
-print("Наївний алгоритм:", naive_time1_non_exist)
-print("КМП:", kmp_time1_non_exist)
-print("Боєр-Мур:", bm_time1_non_exist)
-print("Рабін-Карп:", rk_time1_non_exist)
+    substring_hash = polynomial_hash(substring, base, modulus)
+    current_slice_hash = polynomial_hash(main_string[:substring_length], base, modulus)
 
-print("Час виконання для тексту 2 з наявним підрядком:")
-print("Наївний алгоритм:", naive_time2_exist)
-print("КМП:", kmp_time2_exist)
-print("Боєр-Мур:", bm_time2_exist)
-print("Рабін-Карп:", rk_time2_exist)
+    h_multiplier = pow(base, substring_length - 1) % modulus
 
-print("Час виконання для тексту 2 з невигаданим підрядком:")
-print("Наївний алгоритм:", naive_time2_non_exist)
-print("КМП:", kmp_time2_non_exist)
-print("Боєр-Мур:", bm_time2_non_exist)
-print("Рабін-Карп:", rk_time2_non_exist)
+    for i in range(main_string_length - substring_length + 1):
+        if substring_hash == current_slice_hash:
+            if main_string[i : i + substring_length] == substring:
+                return i
+
+        if i < main_string_length - substring_length:
+            current_slice_hash = (
+                current_slice_hash - ord(main_string[i]) * h_multiplier
+            ) % modulus
+            current_slice_hash = (
+                current_slice_hash * base + ord(main_string[i + substring_length])
+            ) % modulus
+            if current_slice_hash < 0:
+                current_slice_hash += modulus
+
+    return -1
+
+
+text_file_1 = "article_1.txt"
+text_file_2 = "article_2.txt"
+existing_pattern_1 = "логарифмічний пошук часто використовується через швидкий час пошуку"
+existing_pattern_2 = "Рекомендаційні системи є важливою складовою соціальних мереж"
+fake_pattern = "print(Hello World)"
+
+time_kmp_1 = measure_time("knuth_morris_pratt_search", text_file_1, existing_pattern_1)
+time_boyer_moore_1 = measure_time("boyer_moore_search", text_file_1, existing_pattern_1)
+time_rabin_karp_1 = measure_time("rabin_karp_search", text_file_1, existing_pattern_1)
+
+dict_real_1 = {
+    time_kmp_1: "Knuth-Morris-Pratt",
+    time_boyer_moore_1: "Boyer-Moore",
+    time_rabin_karp_1: "Rabin-Karp",
+}
+
+print()
+print(f"Час виконання алгоритмів для існуючого підрядка в {text_file_1}:")
+for key, value in dict_real_1.items():
+    print(f"{value}: {key}")
+
+time_fake_kmp_1 = measure_time("knuth_morris_pratt_search", text_file_1, fake_pattern)
+time_fake_boyer_moore_1 = measure_time("boyer_moore_search", text_file_1, fake_pattern)
+time_fake_rabin_karp_1 = measure_time("rabin_karp_search", text_file_1, fake_pattern)
+
+dict_fake_1 = {
+    time_fake_kmp_1: "Knuth-Morris-Pratt",
+    time_fake_boyer_moore_1: "Boyer-Moore",
+    time_fake_rabin_karp_1: "Rabin-Karp",
+}
+
+print()
+print(f"Час виконання алгоритмів для неіснуючого підрядка в {text_file_1}:")
+for key, value in dict_fake_1.items():
+    print(f"{value}: {key}")
+
+fastest_algorithm_real_1 = min(time_kmp_1, time_boyer_moore_1, time_rabin_karp_1)
+fastest_algorithm_fake_1 = min(
+    time_fake_kmp_1, time_fake_boyer_moore_1, time_fake_rabin_karp_1
+)
+
+dict_best_time = {
+    fastest_algorithm_real_1: dict_real_1[fastest_algorithm_real_1]
+    + f" (real, {text_file_1})",
+    fastest_algorithm_fake_1: dict_fake_1[fastest_algorithm_fake_1]
+    + f" (fake, {text_file_1})",
+}
+
+print()
+print(
+    f"Найшвидший алгоритм для існуючого підрядка в {text_file_1}: {dict_real_1[fastest_algorithm_real_1]}: {fastest_algorithm_real_1}"
+)
+print(
+    f"Найшвидший алгоритм для для неіснуючого підрядка в {text_file_1}: {dict_fake_1[fastest_algorithm_fake_1]}: {fastest_algorithm_fake_1}"
+)
+
+time_kmp_2 = measure_time("knuth_morris_pratt_search", text_file_2, existing_pattern_2)
+time_boyer_moore_2 = measure_time("boyer_moore_search", text_file_2, existing_pattern_2)
+time_rabin_karp_2 = measure_time("rabin_karp_search", text_file_2, existing_pattern_2)
+
+dict_real_2 = {
+    time_kmp_2: "Knuth-Morris-Pratt",
+    time_boyer_moore_2: "Boyer-Moore",
+    time_rabin_karp_2: "Rabin-Karp",
+}
+
+print()
+print(f"Час виконання алгоритмів для існуючого підрядка в {text_file_2}:")
+for key, value in dict_real_2.items():
+    print(f"{value}: {key}")
+
+time_fake_kmp_2 = measure_time("knuth_morris_pratt_search", text_file_2, fake_pattern)
+time_fake_boyer_moore_2 = measure_time("boyer_moore_search", text_file_2, fake_pattern)
+time_fake_rabin_karp_2 = measure_time("rabin_karp_search", text_file_2, fake_pattern)
+
+dict_fake_2 = {
+    time_fake_kmp_2: "Knuth-Morris-Pratt",
+    time_fake_boyer_moore_2: "Boyer-Moore",
+    time_fake_rabin_karp_2: "Rabin-Karp",
+}
+
+print()
+print(f"Час виконання алгоритмів для неіснуючого підрядка в {text_file_2}:")
+for key, value in dict_fake_2.items():
+    print(f"{value}: {key}")
+
+fastest_algorithm_real_2 = min(time_kmp_2, time_boyer_moore_2, time_rabin_karp_2)
+fastest_algorithm_fake_2 = min(
+    time_fake_kmp_2, time_fake_boyer_moore_2, time_fake_rabin_karp_2
+)
+
+dict_best_time[fastest_algorithm_real_2] = (
+    dict_real_2[fastest_algorithm_real_2] + f" (real, {text_file_2})"
+)
+dict_best_time[fastest_algorithm_fake_2] = (
+    dict_fake_2[fastest_algorithm_fake_2] + f" (fake, {text_file_2})"
+)
+
+print()
+print(
+    f"Найшвидший алгоритм для існуючого підрядка в {text_file_2}: {dict_real_2[fastest_algorithm_real_2]}: {fastest_algorithm_real_2}"
+)
+print(
+    f"Найшвидший алгоритм для для неіснуючого підрядка в {text_file_2}: {dict_fake_2[fastest_algorithm_fake_2]}: {fastest_algorithm_fake_2}"
+)
+
+min_value_key = min(dict_best_time, key=lambda k: dict_best_time[k])
+min_value = dict_best_time[min_value_key]
+
+print()
+print(
+    f"Найшвидший алгоритм серед усіх замірів виявився алгоритм {min_value}: {min_value_key}"
+)

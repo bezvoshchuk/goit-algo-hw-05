@@ -38,16 +38,14 @@ class HashTable:
                     return True
         return False
 
-# Тестуємо нашу хеш-таблицю:
 H = HashTable(5)
 H.insert("apple", 10)
 H.insert("orange", 20)
 H.insert("banana", 30)
 
-print(H.get("apple"))   # Виведе: 10
-print(H.get("orange"))  # Виведе: 20
-print(H.get("banana"))  # Виведе: 30
+print(H.get("apple"))   # 10
+print(H.get("orange"))  # 20
+print(H.get("banana"))  # 30
 
-# Видаляємо пару ключ-значення
 H.delete("orange")
-print(H.get("orange"))  # Виведе: None, оскільки "orange" було видалено
+print(H.get("orange"))  # None
